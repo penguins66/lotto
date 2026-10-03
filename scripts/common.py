@@ -23,5 +23,5 @@ def save(draws):
     # 한 회차당 한 줄: diff가 읽기 쉽고 파일도 작게 유지
     lines = ",\n".join(json.dumps(d, ensure_ascii=False, separators=(",", ":")) for d in draws)
     DATA.write_text(
-        '{"updated":"%s","draws":[\n%s\n]}\n' % (body["updated"], lines), encoding="utf-8"
+        '{"updated":"%s","draws":[\n%s\n]}\n' % (body["updated"], lines), encoding="utf-8", newline="\n"
     )
