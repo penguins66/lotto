@@ -1,0 +1,66 @@
+name: 회차 갱신 및 배포
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # 추첨: 매주 토요일 20:35 KST. 결과가 늦게 올라오는 경우를 대비해 여러 번 시도 (UTC 기준)
+    - cron: "17 13 * * 6"   # 토 22:17 KST
+    - cron: "17 0 * * 0"    # 일 09:17 KST
+    - cron: "17 0 * * 1"    # 월 09:17 KST
+  workflow_dispatch:         # Actions 탭에서 수동 실행
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  update:
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 최신 회차 가져오기
+        run: python scripts/update.py
+      - name: 변경 시 커밋
+        run: |
+          if git diff --quiet -- data/draws.json; then
+            echo "변경 없음"; exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          latest=$(python -c "import json;print(json.load(open('data/draws.json'))['draws'][-1]['r'])")
+          git add data/draws.json
+          git commit -m "data: ${latest}회 당첨번호 추가"
+          git push
+
+  deploy:
+    needs: update
+    # push일 때는 update를 건너뛰므로 always()로 이어서 실행
+    if: always() && (needs.update.result == 'success' || needs.update.result == 'skipped')
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: 배포 파일 모으기
+        run: |
+          mkdir _site
+          cp -r index.html style.css js data _site/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

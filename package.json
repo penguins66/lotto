@@ -1,0 +1,9 @@
+{
+  "name": "lotto-generator",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "update": "python scripts/update.py"
+  }
+}
