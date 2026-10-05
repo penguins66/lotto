@@ -5,14 +5,15 @@ export const MAX = 45;
 export const PICK = 6;
 
 // 최신 회차 기준 구간. from/to는 "최근 몇 번째 회차"(1 = 가장 최근).
+// 1번째(직전 회차)는 구간에 넣지 않고, 그 6개 중 정확히 1개를 각 세트에 포함시킨다.
 export const WINDOWS = [
-  { from: 1, to: 10, top: 1, weight: 0.05 },
-  { from: 11, to: 30, top: 2, weight: 0.10 },
-  { from: 31, to: 60, top: 2, weight: 0.15 },
-  { from: 61, to: 100, top: 3, weight: 0.20 },
-  { from: 101, to: 200, top: 3, weight: 0.30 },
-  { from: 201, to: Infinity, top: 4, weight: 0.20 },
+  { from: 2, to: 50, top: 5, weight: 0.30 },
+  { from: 51, to: 100, top: 5, weight: 0.30 },
+  { from: 101, to: Infinity, top: 6, weight: 0.40 },
 ];
+
+// 직전 회차 번호 중 세트에 넣을 개수
+export const CARRY = 1;
 
 // 각 구간 비중 중 빈출 상위 번호에 몰아주는 몫. 나머지는 구간 내 출현 빈도대로 45개 전체에 나눈다.
 export const FOCUS = 0.5;
@@ -81,6 +82,7 @@ export function analyze(draws) {
 
   return {
     latest: recent[0],
+    carry: recent[0].n,
     total: recent.length,
     windows,
     prob, // prob[1..45], 합 = 1
@@ -94,6 +96,7 @@ export function analyze(draws) {
 
 export function checkCombo(nums, stats, options = DEFAULT_OPTIONS) {
   const sorted = [...nums].sort((a, b) => a - b);
+  if (sorted.filter((n) => stats.carry.includes(n)).length !== CARRY) return 'carry';
   if (stats.past.has(sorted.join(','))) return 'past';
   const z = (sum(sorted) - stats.mean) / stats.sd;
   if (Math.abs(z) > SUM_HARD_LIMIT) return 'sum';
@@ -111,7 +114,7 @@ export function generate(stats, { count = 5, options = DEFAULT_OPTIONS, rng = cr
   const seen = new Set();
   const maxAttempts = 200000;
   for (let attempt = 0; sets.length < count && attempt < maxAttempts; attempt++) {
-    const nums = weightedSample(stats.prob, PICK, rng).sort((a, b) => a - b);
+    const nums = sampleCombo(stats, rng);
     const key = nums.join(',');
     if (seen.has(key) || checkCombo(nums, stats, options)) continue;
     // 정규분포 기반 채택: 합계가 평균에 가까울수록 채택 확률이 높다 (z=0 → 100%, z=1 → 61%, z=2 → 14%)
@@ -126,12 +129,23 @@ export function generate(stats, { count = 5, options = DEFAULT_OPTIONS, rng = cr
   return sets;
 }
 
+// 직전 회차 번호에서 CARRY개, 나머지 번호에서 PICK-CARRY개를 각각 확률대로 뽑는다
+export function sampleCombo(stats, rng) {
+  const inCarry = stats.prob.map((p, n) => (stats.carry.includes(n) ? p : 0));
+  const outCarry = stats.prob.map((p, n) => (stats.carry.includes(n) ? 0 : p));
+  return [
+    ...weightedSample(inCarry, CARRY, rng),
+    ...weightedSample(outCarry, PICK - CARRY, rng),
+  ].sort((a, b) => a - b);
+}
+
 export function describe(nums, stats) {
   const s = sum(nums);
   const odd = nums.filter((n) => n % 2).length;
   const low = nums.filter((n) => n <= 22).length;
   return {
     nums,
+    carry: nums.filter((n) => stats.carry.includes(n)),
     sum: s,
     z: (s - stats.mean) / stats.sd,
     odd,

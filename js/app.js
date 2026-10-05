@@ -19,6 +19,7 @@ async function init() {
     stats = analyze(data.draws);
     renderHeader(data.updated);
     renderWindows();
+    renderCarry();
     setupOptions();
     $('generateBtn').disabled = false;
     $('generateBtn').addEventListener('click', onGenerate);
@@ -64,11 +65,20 @@ function renderSets() {
       const balls = el('div', 'balls');
       s.nums.forEach((n, j) => {
         const b = ball(n);
+        if (s.carry.includes(n)) {
+          b.classList.add('carry');
+          b.title = '직전 회차 번호';
+        }
         b.style.animationDelay = `${i * 60 + j * 40}ms`;
         balls.append(b);
       });
       const meta = el('div', 'set-meta');
-      meta.textContent = `합계 ${s.sum} (평균${s.z >= 0 ? '+' : ''}${(s.z).toFixed(1)}σ) · 홀짝 ${s.odd}:${s.even} · 저고 ${s.low}:${s.high}`;
+      meta.append(...[
+        `직전 회차 ${s.carry.join(', ')}`,
+        `합계 ${s.sum} (평균${fmtZ(s.z)}σ)`,
+        `홀짝 ${s.odd}:${s.even}`,
+        `저고 ${s.low}:${s.high}`,
+      ].map((t) => el('span', '', t)));
       li.append(el('span', 'set-label', LABELS[i]), balls, meta);
       return li;
     }),
@@ -131,6 +141,11 @@ function renderWindows() {
       return tr;
     }),
   );
+}
+
+function renderCarry() {
+  $('carryTitle').textContent = `직전 회차(제${stats.latest.r}회) 번호`;
+  $('carryBalls').replaceChildren(...stats.carry.map((n) => ball(n, true)));
 }
 
 function windowLabel(w) {
@@ -346,6 +361,11 @@ function niceStep(max) {
 function niceMax(max) {
   const step = niceStep(max);
   return Math.ceil(max / step) * step;
+}
+
+function fmtZ(z) {
+  const t = Math.abs(z).toFixed(1);
+  return t === '0.0' ? '±0.0' : `${z > 0 ? '+' : '-'}${t}`;
 }
 
 function fmtDate(iso) {

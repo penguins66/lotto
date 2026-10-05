@@ -35,7 +35,7 @@
           <label><input type="checkbox" data-opt="consecutive"> <span><b>3연속 제외</b> 12·13·14처럼 세 개 이상 이어지는 조합</span></label>
           <label><input type="checkbox" data-opt="birthday"> <span><b>생일 조합 제외</b> 모두 31 이하인 조합. 많은 사람이 고르는 번호라 1등이 돼도 당첨금을 나눌 가능성이 커요</span></label>
         </div>
-        <p class="fine">항상 적용: 역대 1등 조합과 같은 조합 제외 · 세트끼리 4개 이상 겹치지 않기 · 합계가 평균 ±2σ 밖이면 제외</p>
+        <p class="fine">항상 적용: 직전 회차 번호 정확히 1개 포함 · 역대 1등 조합과 같은 조합 제외 · 세트끼리 4개 이상 겹치지 않기 · 합계가 평균 ±2σ 밖이면 제외</p>
       </details>
     </section>
 
@@ -48,6 +48,10 @@
     <section class="card" aria-labelledby="winTitle">
       <h2 id="winTitle">구간별 빈출 번호</h2>
       <p class="sub">같은 번호가 여러 구간에서 빈출이면 비중이 더해져요.</p>
+      <div class="carry-box">
+        <div><b id="carryTitle">직전 회차 번호</b><span>세트마다 이 중 1개가 꼭 들어가요</span></div>
+        <div class="chips" id="carryBalls"></div>
+      </div>
       <div class="table-wrap">
         <table class="windows">
           <thead><tr><th scope="col">구간</th><th scope="col" class="num">비중</th><th scope="col">빈출 번호 (출현 횟수)</th></tr></thead>
@@ -70,8 +74,8 @@
     <section class="card how" aria-labelledby="howTitle">
       <h2 id="howTitle">어떻게 만드나요?</h2>
       <ol>
-        <li><b>구간별 빈출 번호</b> 최근 회차부터 6개 구간으로 나눠, 구간마다 많이 나온 번호를 뽑아요. 구간에 매긴 비중의 절반은 이 빈출 번호들에, 나머지 절반은 구간 안 출현 빈도대로 45개 번호 전체에 나눠요.</li>
-        <li><b>확률 추첨</b> 이렇게 정한 번호별 확률대로 6개를 뽑아요. 빈출 번호가 자주 들어가지만 다른 번호도 섞여요.</li>
+        <li><b>구간별 빈출 번호</b> 직전 회차를 뺀 나머지를 최근 2~50회(30%), 51~100회(30%), 101회~처음(40%)으로 나눠, 구간마다 많이 나온 번호를 뽑아요. 구간 비중의 절반은 이 빈출 번호들에, 나머지 절반은 구간 안 출현 빈도대로 45개 번호 전체에 나눠요.</li>
+        <li><b>확률 추첨</b> 직전 회차 번호 6개 중 1개, 나머지 번호 중 5개를 이 확률대로 뽑아요. 빈출 번호가 자주 들어가지만 다른 번호도 섞여요.</li>
         <li><b>정규분포 필터</b> 역대 당첨번호 6개의 합은 정규분포에 가까워요. 합계가 평균에 가까운 조합일수록 채택될 확률이 높아요(±1σ 61%, ±2σ 14%, 그 밖은 제외).</li>
         <li><b>중복 제거</b> 역대 1등 조합과 똑같은 조합, 세트끼리 비슷한 조합을 걸러요.</li>
       </ol>

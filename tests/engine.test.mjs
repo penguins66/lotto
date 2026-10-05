@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  analyze, generate, checkCombo, weightedSample, comboKey, WINDOWS, DEFAULT_OPTIONS, MAX_SHARED,
+  analyze, generate, checkCombo, weightedSample, comboKey, WINDOWS, DEFAULT_OPTIONS, MAX_SHARED, CARRY,
 } from '../js/engine.js';
 
 const { draws } = JSON.parse(readFileSync(new URL('../data/draws.json', import.meta.url), 'utf8'));
@@ -29,13 +29,11 @@ test('데이터: 1회부터 연속, 번호 6개', () => {
 test('구간: 최신 회차 기준으로 정확히 나뉜다', () => {
   const latest = stats.latest.r;
   assert.deepEqual(stats.windows.map((w) => w.rounds), [
-    [latest - 9, latest],
-    [latest - 29, latest - 10],
-    [latest - 59, latest - 30],
-    [latest - 99, latest - 60],
-    [latest - 199, latest - 100],
-    [1, latest - 200],
+    [latest - 49, latest - 1],
+    [latest - 99, latest - 50],
+    [1, latest - 100],
   ]);
+  assert.deepEqual(stats.windows.map((w) => w.effectiveWeight), [0.3, 0.3, 0.4]);
   stats.windows.forEach((w, i) => assert.equal(w.top.length, WINDOWS[i].top));
 });
 
@@ -81,6 +79,8 @@ test('생성: 5세트, 모든 규칙 충족 (여러 시드)', () => {
       assert.ok(s.nums.every((n) => n >= 1 && n <= 45));
       assert.equal(checkCombo(s.nums, stats, DEFAULT_OPTIONS), null);
       assert.ok(!stats.past.has(comboKey(s.nums)));
+      assert.equal(s.nums.filter((n) => stats.carry.includes(n)).length, CARRY);
+      assert.deepEqual(s.carry, s.nums.filter((n) => stats.carry.includes(n)));
       keys.add(comboKey(s.nums));
     }
     assert.equal(keys.size, 5);
@@ -91,18 +91,29 @@ test('생성: 5세트, 모든 규칙 충족 (여러 시드)', () => {
   }
 });
 
+test('직전 회차 번호는 정확히 1개만 허용된다', () => {
+  const carry = stats.carry;
+  const others = [...Array(45).keys()].map((i) => i + 1).filter((n) => !carry.includes(n));
+  assert.equal(checkCombo(others.slice(10, 16), stats, {}), 'carry');          // 0개
+  assert.equal(checkCombo([...carry.slice(0, 2), ...others.slice(10, 14)], stats, {}), 'carry'); // 2개
+  assert.equal(checkCombo(carry, stats, {}), 'carry');                          // 6개 (= 직전 1등 조합)
+});
+
 test('과거 1등 조합은 거절된다', () => {
-  assert.equal(checkCombo(draws.at(-1).n, stats, {}), 'past');
-  assert.equal(checkCombo(draws[0].n, stats, {}), 'past');
+  // 직전 회차 번호를 1개 포함한 과거 1등 조합을 찾아 검사
+  const old = draws.slice(0, -1).find((d) => d.n.filter((n) => stats.carry.includes(n)).length === 1);
+  assert.equal(checkCombo(old.n, stats, {}), 'past');
 });
 
 test('옵션 필터', () => {
-  assert.equal(checkCombo([1, 3, 15, 27, 33, 41], stats, { oddEven: true }), 'oddEven');
-  assert.equal(checkCombo([2, 5, 9, 14, 18, 22], stats, { lowHigh: true }), 'sum'); // 합 70: 합계 범위 밖
-  assert.equal(checkCombo([12, 15, 17, 19, 20, 22], stats, { lowHigh: true }), 'lowHigh');
-  assert.equal(checkCombo([5, 13, 14, 15, 30, 44], stats, { consecutive: true }), 'consecutive');
-  assert.equal(checkCombo([4, 11, 18, 23, 27, 31], stats, { birthday: true }), 'birthday');
-  assert.equal(checkCombo([4, 11, 18, 23, 27, 31], stats, { birthday: false }), null);
+  // 직전 회차 규칙과 분리해서 보려고, 예시마다 포함된 번호 하나를 직전 회차 번호로 둔다
+  const check = (nums, opts, carry) => checkCombo(nums, { ...stats, carry: [carry] }, opts);
+  assert.equal(check([1, 3, 15, 27, 33, 41], { oddEven: true }, 27), 'oddEven');
+  assert.equal(check([2, 5, 9, 14, 18, 22], { lowHigh: true }, 22), 'sum'); // 합 70: 합계 범위 밖
+  assert.equal(check([12, 15, 17, 19, 20, 22], { lowHigh: true }, 22), 'lowHigh');
+  assert.equal(check([5, 13, 14, 15, 30, 44], { consecutive: true }, 44), 'consecutive');
+  assert.equal(check([4, 11, 18, 23, 27, 31], { birthday: true }, 27), 'birthday');
+  assert.equal(check([4, 11, 18, 23, 27, 31], { birthday: false }, 27), null);
 });
 
 test('가중 추출: 확률에 비례한다', () => {
@@ -120,9 +131,10 @@ test('생성된 번호 분포가 확률을 따른다', () => {
   const rng = seeded(42);
   const hits = new Array(46).fill(0);
   for (let i = 0; i < 400; i++) for (const s of generate(stats, { rng })) for (const n of s.nums) hits[n]++;
-  const top = stats.windows.flatMap((w) => w.top);
+  // 직전 회차 번호는 별도 규칙(1개 포함)으로 뽑히므로 비교에서 뺀다
+  const top = stats.windows.flatMap((w) => w.top).filter((n) => !stats.carry.includes(n));
   const avgTop = top.reduce((s, n) => s + hits[n], 0) / top.length;
-  const others = [...Array(45).keys()].map((i) => i + 1).filter((n) => !top.includes(n));
+  const others = [...Array(45).keys()].map((i) => i + 1).filter((n) => !top.includes(n) && !stats.carry.includes(n));
   const avgOther = others.reduce((s, n) => s + hits[n], 0) / others.length;
   assert.ok(avgTop > avgOther * 1.5, `top ${avgTop} vs other ${avgOther}`);
 });
