@@ -25,6 +25,7 @@ async function init() {
     $('generateBtn').addEventListener('click', onGenerate);
     $('copyBtn').addEventListener('click', onCopy);
     onGenerate();
+    drawProbChart(); // 크기 감지 이벤트를 기다리지 않고 먼저 그린다
     observeCharts();
   } catch (e) {
     showError('당첨번호 데이터를 불러오지 못했어요. 잠시 후 새로고침해 주세요.');
@@ -145,7 +146,18 @@ function renderWindows() {
 
 function renderCarry() {
   $('carryTitle').textContent = `직전 회차(제${stats.latest.r}회) 번호`;
-  $('carryBalls').replaceChildren(...stats.carry.map((n) => ball(n, true)));
+  $('carryBalls').replaceChildren(...stats.latestNums.map((n) => {
+    const b = ball(n, true);
+    if (!stats.carry.includes(n)) {
+      b.classList.add('excluded');
+      b.title = '그 전 회차에도 나온 번호라 제외';
+    }
+    return b;
+  }));
+  const excluded = stats.latestNums.filter((n) => !stats.carry.includes(n));
+  $('carryNote').textContent = excluded.length
+    ? `세트마다 이 중 1개가 꼭 들어가요. ${excluded.join('·')}번은 제${stats.latest.r - 1}회에도 나와서 제외`
+    : '세트마다 이 중 1개가 꼭 들어가요';
 }
 
 function windowLabel(w) {
@@ -155,7 +167,7 @@ function windowLabel(w) {
 /* ---------- 차트 ---------- */
 
 function observeCharts() {
-  let lastWidth = 0;
+  let lastWidth = $('probChart').clientWidth;
   const ro = new ResizeObserver(([entry]) => {
     const w = Math.round(entry.contentRect.width);
     if (w === lastWidth) return;
@@ -194,7 +206,9 @@ function drawProbChart() {
     const x = m.left + (n - 1) * step + gap / 2;
     const p = stats.prob[n];
     const col = svgEl('rect', { class: 'hover-col', x: x - gap / 2, y: m.top, width: step, height: ih });
-    const bar = svgEl('path', { class: `bar${strong.has(n) ? ' strong' : ''}`, d: barPath(x, y(p), bw, y(0) - y(p)) });
+    const excluded = stats.latestNums.includes(n) && !stats.carry.includes(n);
+    const cls = `bar${strong.has(n) ? ' strong' : ''}${excluded ? ' excluded' : ''}`;
+    const bar = svgEl('path', { class: cls, d: barPath(x, y(p), bw, y(0) - y(p)) });
     svg.append(col, bar);
     bindTip(col, () => probTip(n));
     if (n === 1 || n % 5 === 0) {
@@ -213,6 +227,9 @@ function probTip(n) {
   const wins = stats.topOf(n);
   const frag = document.createDocumentFragment();
   frag.append(el('strong', '', `${n}번 · ${(p * 100).toFixed(2)}%`));
+  if (stats.latestNums.includes(n) && !stats.carry.includes(n)) {
+    frag.append(el('div', '', `이번 회차 제외 (제${stats.latest.r - 1}·${stats.latest.r}회 연속 출현)`));
+  }
   frag.append(el('div', 'muted', `기본 확률의 ${(p * 45).toFixed(1)}배`));
   frag.append(el('div', 'muted', wins.length
     ? `빈출 구간: ${wins.map(windowLabel).join(', ')}`

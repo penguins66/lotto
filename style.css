@@ -207,6 +207,7 @@ button:focus-visible, summary:focus-visible, input:focus-visible, a:focus-visibl
   border-radius: 10px;
   font-size: 14px;
 }
+.ball.excluded { opacity: 0.3; filter: grayscale(1); }
 .carry-box b { display: block; font-weight: 600; }
 .carry-box span { color: var(--text-2); font-size: 13px; }
 
@@ -219,6 +220,7 @@ button:focus-visible, summary:focus-visible, input:focus-visible, a:focus-visibl
 .chart .bar { fill: var(--bar); }
 .chart .bar.strong { fill: var(--bar-strong); }
 .chart .bar.hit { fill: var(--mark); }
+.chart .bar.excluded { opacity: 0.25; }
 .chart .hover-col { fill: transparent; cursor: default; }
 .chart .hover-col:hover + .bar, .chart .hover-col.active + .bar { filter: brightness(1.12); }
 .chart .curve { fill: none; stroke: var(--curve); stroke-width: 2; }

@@ -79,6 +79,7 @@ test('생성: 5세트, 모든 규칙 충족 (여러 시드)', () => {
       assert.ok(s.nums.every((n) => n >= 1 && n <= 45));
       assert.equal(checkCombo(s.nums, stats, DEFAULT_OPTIONS), null);
       assert.ok(!stats.past.has(comboKey(s.nums)));
+      assert.equal(s.nums.filter((n) => stats.latestNums.includes(n)).length, CARRY);
       assert.equal(s.nums.filter((n) => stats.carry.includes(n)).length, CARRY);
       assert.deepEqual(s.carry, s.nums.filter((n) => stats.carry.includes(n)));
       keys.add(comboKey(s.nums));
@@ -91,9 +92,31 @@ test('생성: 5세트, 모든 규칙 충족 (여러 시드)', () => {
   }
 });
 
+test('포함 후보: 직전 회차 번호 중 2번째 회차와 겹치지 않는 번호', () => {
+  const [prev, latest] = draws.slice(-2);
+  assert.deepEqual(stats.latestNums, latest.n);
+  assert.deepEqual(stats.carry, latest.n.filter((n) => !prev.n.includes(n)));
+  assert.ok(stats.carry.length > 0);
+});
+
+test('2번째 회차와 겹치는 직전 회차 번호는 세트에 들어가지 않는다', () => {
+  const [prev, latest] = draws.slice(-2);
+  const overlap = latest.n.filter((n) => prev.n.includes(n));
+  for (let seed = 1; seed <= 200; seed++) {
+    for (const s of generate(stats, { rng: seeded(seed) })) {
+      assert.ok(!s.nums.some((n) => overlap.includes(n)), `${s.nums} contains ${overlap}`);
+    }
+  }
+  // 겹치는 번호 + 다른 직전 회차 번호가 없는 조합은 거절
+  if (overlap.length) {
+    const rest = [...Array(45).keys()].map((i) => i + 1).filter((n) => !latest.n.includes(n));
+    assert.equal(checkCombo([overlap[0], ...rest.slice(10, 15)], stats, {}), 'carry');
+  }
+});
+
 test('직전 회차 번호는 정확히 1개만 허용된다', () => {
   const carry = stats.carry;
-  const others = [...Array(45).keys()].map((i) => i + 1).filter((n) => !carry.includes(n));
+  const others = [...Array(45).keys()].map((i) => i + 1).filter((n) => !stats.latestNums.includes(n));
   assert.equal(checkCombo(others.slice(10, 16), stats, {}), 'carry');          // 0개
   assert.equal(checkCombo([...carry.slice(0, 2), ...others.slice(10, 14)], stats, {}), 'carry'); // 2개
   assert.equal(checkCombo(carry, stats, {}), 'carry');                          // 6개 (= 직전 1등 조합)
@@ -101,13 +124,14 @@ test('직전 회차 번호는 정확히 1개만 허용된다', () => {
 
 test('과거 1등 조합은 거절된다', () => {
   // 직전 회차 번호를 1개 포함한 과거 1등 조합을 찾아 검사
-  const old = draws.slice(0, -1).find((d) => d.n.filter((n) => stats.carry.includes(n)).length === 1);
+  const old = draws.slice(0, -1).find((d) =>
+    d.n.filter((n) => stats.latestNums.includes(n)).length === 1 && d.n.some((n) => stats.carry.includes(n)));
   assert.equal(checkCombo(old.n, stats, {}), 'past');
 });
 
 test('옵션 필터', () => {
   // 직전 회차 규칙과 분리해서 보려고, 예시마다 포함된 번호 하나를 직전 회차 번호로 둔다
-  const check = (nums, opts, carry) => checkCombo(nums, { ...stats, carry: [carry] }, opts);
+  const check = (nums, opts, carry) => checkCombo(nums, { ...stats, latestNums: [carry], carry: [carry] }, opts);
   assert.equal(check([1, 3, 15, 27, 33, 41], { oddEven: true }, 27), 'oddEven');
   assert.equal(check([2, 5, 9, 14, 18, 22], { lowHigh: true }, 22), 'sum'); // 합 70: 합계 범위 밖
   assert.equal(check([12, 15, 17, 19, 20, 22], { lowHigh: true }, 22), 'lowHigh');
@@ -132,9 +156,9 @@ test('생성된 번호 분포가 확률을 따른다', () => {
   const hits = new Array(46).fill(0);
   for (let i = 0; i < 400; i++) for (const s of generate(stats, { rng })) for (const n of s.nums) hits[n]++;
   // 직전 회차 번호는 별도 규칙(1개 포함)으로 뽑히므로 비교에서 뺀다
-  const top = stats.windows.flatMap((w) => w.top).filter((n) => !stats.carry.includes(n));
+  const top = stats.windows.flatMap((w) => w.top).filter((n) => !stats.latestNums.includes(n));
   const avgTop = top.reduce((s, n) => s + hits[n], 0) / top.length;
-  const others = [...Array(45).keys()].map((i) => i + 1).filter((n) => !top.includes(n) && !stats.carry.includes(n));
+  const others = [...Array(45).keys()].map((i) => i + 1).filter((n) => !top.includes(n) && !stats.latestNums.includes(n));
   const avgOther = others.reduce((s, n) => s + hits[n], 0) / others.length;
   assert.ok(avgTop > avgOther * 1.5, `top ${avgTop} vs other ${avgOther}`);
 });

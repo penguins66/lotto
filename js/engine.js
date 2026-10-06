@@ -6,6 +6,7 @@ export const PICK = 6;
 
 // 최신 회차 기준 구간. from/to는 "최근 몇 번째 회차"(1 = 가장 최근).
 // 1번째(직전 회차)는 구간에 넣지 않고, 그 6개 중 정확히 1개를 각 세트에 포함시킨다.
+// 단, 그 1개는 2번째 회차에도 나온 번호면 안 된다.
 export const WINDOWS = [
   { from: 2, to: 50, top: 5, weight: 0.30 },
   { from: 51, to: 100, top: 5, weight: 0.30 },
@@ -82,7 +83,9 @@ export function analyze(draws) {
 
   return {
     latest: recent[0],
-    carry: recent[0].n,
+    latestNums: recent[0].n,
+    // 세트에 넣을 수 있는 직전 회차 번호 (2번째 회차와 겹치는 번호 제외)
+    carry: recent[0].n.filter((n) => !(recent[1]?.n ?? []).includes(n)),
     total: recent.length,
     windows,
     prob, // prob[1..45], 합 = 1
@@ -96,7 +99,8 @@ export function analyze(draws) {
 
 export function checkCombo(nums, stats, options = DEFAULT_OPTIONS) {
   const sorted = [...nums].sort((a, b) => a - b);
-  if (sorted.filter((n) => stats.carry.includes(n)).length !== CARRY) return 'carry';
+  const fromLatest = sorted.filter((n) => stats.latestNums.includes(n));
+  if (fromLatest.length !== CARRY || !fromLatest.every((n) => stats.carry.includes(n))) return 'carry';
   if (stats.past.has(sorted.join(','))) return 'past';
   const z = (sum(sorted) - stats.mean) / stats.sd;
   if (Math.abs(z) > SUM_HARD_LIMIT) return 'sum';
@@ -132,7 +136,7 @@ export function generate(stats, { count = 5, options = DEFAULT_OPTIONS, rng = cr
 // 직전 회차 번호에서 CARRY개, 나머지 번호에서 PICK-CARRY개를 각각 확률대로 뽑는다
 export function sampleCombo(stats, rng) {
   const inCarry = stats.prob.map((p, n) => (stats.carry.includes(n) ? p : 0));
-  const outCarry = stats.prob.map((p, n) => (stats.carry.includes(n) ? 0 : p));
+  const outCarry = stats.prob.map((p, n) => (stats.latestNums.includes(n) ? 0 : p));
   return [
     ...weightedSample(inCarry, CARRY, rng),
     ...weightedSample(outCarry, PICK - CARRY, rng),
