@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  analyze, generate, checkCombo, weightedSample, comboKey, WINDOWS, DEFAULT_OPTIONS, MAX_SHARED, CARRY,
+  analyze, generate, checkCombo, withBonus, weightedSample, comboKey, WINDOWS, DEFAULT_OPTIONS, MAX_SHARED, CARRY,
 } from '../js/engine.js';
 
 const { draws } = JSON.parse(readFileSync(new URL('../data/draws.json', import.meta.url), 'utf8'));
@@ -161,4 +161,29 @@ test('생성된 번호 분포가 확률을 따른다', () => {
   const others = [...Array(45).keys()].map((i) => i + 1).filter((n) => !top.includes(n) && !stats.latestNums.includes(n));
   const avgOther = others.reduce((s, n) => s + hits[n], 0) / others.length;
   assert.ok(avgTop > avgOther * 1.5, `top ${avgTop} vs other ${avgOther}`);
+});
+
+test('보너스 모드: 직전 회차 7개(보너스 포함) 중 정확히 1개', () => {
+  const latest = draws.at(-1);
+  const pool = [...latest.n, latest.b];
+  const bonusStats = withBonus(stats);
+  const seenCarry = new Set();
+  for (let seed = 1; seed <= 300; seed++) {
+    const sets = generate(bonusStats, { rng: seeded(seed) });
+    assert.equal(sets.length, 5);
+    for (const s of sets) {
+      assert.equal(s.nums.filter((n) => pool.includes(n)).length, 1);
+      assert.deepEqual(s.carry, s.nums.filter((n) => pool.includes(n)));
+      assert.equal(checkCombo(s.nums, bonusStats, DEFAULT_OPTIONS), null);
+      assert.ok(!stats.past.has(comboKey(s.nums)));
+      seenCarry.add(s.carry[0]);
+    }
+  }
+  // 7개 모두 후보 (2번째 회차와 겹쳐도 제외하지 않음), 보너스 번호도 실제로 뽑힌다
+  assert.deepEqual([...seenCarry].sort((a, b) => a - b), [...pool].sort((a, b) => a - b));
+  // 보너스 번호 2개 이상 포함은 거절
+  const rest = [...Array(45).keys()].map((i) => i + 1).filter((n) => !pool.includes(n));
+  assert.equal(checkCombo([latest.b, latest.n[0], ...rest.slice(10, 14)], bonusStats, {}), 'carry');
+  // 기본 모드는 그대로
+  assert.deepEqual(stats.latestNums, latest.n);
 });

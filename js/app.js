@@ -1,4 +1,4 @@
-import { analyze, generate, normalPdf, DEFAULT_OPTIONS, MAX } from './engine.js';
+import { analyze, generate, withBonus, normalPdf, DEFAULT_OPTIONS, MAX } from './engine.js';
 
 const $ = (id) => document.getElementById(id);
 const SVG = 'http://www.w3.org/2000/svg';
@@ -6,8 +6,13 @@ const LABELS = ['A', 'B', 'C', 'D', 'E'];
 const OPTIONS_KEY = 'lotto.options';
 
 let stats = null;
-let current = [];
 let options = loadOptions();
+
+// 화면의 두 생성기: 기본(직전 회차 6개 중 1개) / 보너스 포함(7개 중 1개)
+const generators = {
+  main: { ids: { sets: 'sets', btn: 'generateBtn', copy: 'copyBtn', error: 'error' }, title: '추천 번호', sets: [] },
+  bonus: { ids: { sets: 'bonusSets', btn: 'bonusGenerateBtn', copy: 'bonusCopyBtn', error: 'bonusError' }, title: '추천 번호 (보너스 포함)', sets: [] },
+};
 
 init();
 
@@ -21,10 +26,15 @@ async function init() {
     renderWindows();
     renderCarry();
     setupOptions();
-    $('generateBtn').disabled = false;
-    $('generateBtn').addEventListener('click', onGenerate);
-    $('copyBtn').addEventListener('click', onCopy);
-    onGenerate();
+    generators.main.stats = stats;
+    generators.bonus.stats = withBonus(stats);
+    renderBonusPool();
+    for (const g of Object.values(generators)) {
+      $(g.ids.btn).disabled = false;
+      $(g.ids.btn).addEventListener('click', () => onGenerate(g));
+      $(g.ids.copy).addEventListener('click', () => onCopy(g));
+      onGenerate(g);
+    }
     drawProbChart(); // 크기 감지 이벤트를 기다리지 않고 먼저 그린다
     observeCharts();
   } catch (e) {
@@ -43,23 +53,23 @@ function renderHeader(updated) {
     `색칠한 띠가 평균 ±1σ(${Math.round(stats.mean - stats.sd)}~${Math.round(stats.mean + stats.sd)}) 범위예요.`;
 }
 
-function onGenerate() {
-  hideError();
+function onGenerate(g) {
+  hideError(g.ids.error);
   try {
-    current = generate(stats, { options });
+    g.sets = generate(g.stats, { options });
   } catch (e) {
-    showError(e.message);
+    showError(e.message, g.ids.error);
     return;
   }
-  renderSets();
-  drawSumChart();
-  $('copyBtn').disabled = false;
+  renderSets(g);
+  if (g === generators.main) drawSumChart();
+  $(g.ids.copy).disabled = false;
 }
 
-function renderSets() {
-  const list = $('sets');
-  list.replaceChildren(
-    ...current.map((s, i) => {
+function renderSets(g) {
+  const { latest } = stats;
+  $(g.ids.sets).replaceChildren(
+    ...g.sets.map((s, i) => {
       const li = el('li', 'set');
       li.style.animationDelay = `${i * 60}ms`;
       li.setAttribute('aria-label', `${LABELS[i]}세트: ${s.nums.join(', ')}`);
@@ -68,14 +78,14 @@ function renderSets() {
         const b = ball(n);
         if (s.carry.includes(n)) {
           b.classList.add('carry');
-          b.title = '직전 회차 번호';
+          b.title = latest.n.includes(n) ? '직전 회차 번호' : '직전 회차 보너스 번호';
         }
         b.style.animationDelay = `${i * 60 + j * 40}ms`;
         balls.append(b);
       });
       const meta = el('div', 'set-meta');
       meta.append(...[
-        `직전 회차 ${s.carry.join(', ')}`,
+        s.carry.every((n) => latest.n.includes(n)) ? `직전 회차 ${s.carry.join(', ')}` : `직전 보너스 ${s.carry.join(', ')}`,
         `합계 ${s.sum} (평균${fmtZ(s.z)}σ)`,
         `홀짝 ${s.odd}:${s.even}`,
         `저고 ${s.low}:${s.high}`,
@@ -86,12 +96,12 @@ function renderSets() {
   );
 }
 
-async function onCopy() {
+async function onCopy(g) {
   const text = [
-    `로또 제${stats.latest.r + 1}회 추천 번호`,
-    ...current.map((s, i) => `${LABELS[i]}: ${s.nums.map((n) => String(n).padStart(2, '0')).join(' ')}`),
+    `로또 제${stats.latest.r + 1}회 ${g.title}`,
+    ...g.sets.map((s, i) => `${LABELS[i]}: ${s.nums.map((n) => String(n).padStart(2, '0')).join(' ')}`),
   ].join('\n');
-  const btn = $('copyBtn');
+  const btn = $(g.ids.copy);
   try {
     await navigator.clipboard.writeText(text);
     btn.textContent = '복사됨';
@@ -142,6 +152,16 @@ function renderWindows() {
       return tr;
     }),
   );
+}
+
+function renderBonusPool() {
+  const { latest } = stats;
+  $('bonusPoolTitle').textContent = `제${latest.r}회 번호 + 보너스`;
+  const plus = el('span', 'plus', '+');
+  plus.setAttribute('aria-hidden', 'true');
+  const bonus = ball(latest.b, true);
+  bonus.title = '보너스 번호';
+  $('bonusPool').replaceChildren(...latest.n.map((n) => ball(n, true)), plus, bonus);
 }
 
 function renderCarry() {
@@ -228,7 +248,7 @@ function probTip(n) {
   const frag = document.createDocumentFragment();
   frag.append(el('strong', '', `${n}번 · ${(p * 100).toFixed(2)}%`));
   if (stats.latestNums.includes(n) && !stats.carry.includes(n)) {
-    frag.append(el('div', '', `이번 회차 제외 (제${stats.latest.r - 1}·${stats.latest.r}회 연속 출현)`));
+    frag.append(el('div', '', `기본 추천에서 제외 (제${stats.latest.r - 1}·${stats.latest.r}회 연속 출현)`));
   }
   frag.append(el('div', 'muted', `기본 확률의 ${(p * 45).toFixed(1)}배`));
   frag.append(el('div', 'muted', wins.length
@@ -296,7 +316,7 @@ function drawSumChart() {
     svg.append(svgEl('text', { x: x(s), y: height - 8, 'text-anchor': 'middle' }, String(s)));
   }
 
-  current.forEach((set, i) => {
+  generators.main.sets.forEach((set, i) => {
     const dot = svgEl('circle', { class: 'mark', cx: x(set.sum), cy: y(expected(set.sum)), r: 6 });
     svg.append(dot);
     bindTip(dot, () => {
@@ -389,11 +409,11 @@ function fmtDate(iso) {
   return iso.replaceAll('-', '.');
 }
 
-function showError(msg) {
-  $('error').textContent = msg;
-  $('error').hidden = false;
+function showError(msg, id = 'error') {
+  $(id).textContent = msg;
+  $(id).hidden = false;
 }
 
-function hideError() {
-  $('error').hidden = true;
+function hideError(id = 'error') {
+  $(id).hidden = true;
 }

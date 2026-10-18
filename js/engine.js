@@ -97,6 +97,13 @@ export function analyze(draws) {
   };
 }
 
+// 보너스 모드: 직전 회차 번호 6개 + 보너스 번호, 7개 중 정확히 1개를 넣는다
+// (2번째 회차와 겹치는 번호 제외 규칙은 적용하지 않음)
+export function withBonus(stats) {
+  const nums = [...stats.latest.n, stats.latest.b];
+  return { ...stats, latestNums: nums, carry: nums };
+}
+
 export function checkCombo(nums, stats, options = DEFAULT_OPTIONS) {
   const sorted = [...nums].sort((a, b) => a - b);
   const fromLatest = sorted.filter((n) => stats.latestNums.includes(n));
